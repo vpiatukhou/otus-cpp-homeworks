@@ -1,0 +1,53 @@
+name: 'release'
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-20.04
+    steps:
+      - name: install boost
+        uses: MarkusJx/install-boost@v2.4.1
+        id: install-boost
+        with:
+          boost_version: 1.81.0
+          boost_install_dir: /home/runner
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: build and test
+        run: |
+          cmake . -DPATCH_VERSION=${{ github.run_number }} -DWITH_TESTS=TRUE \
+                  -DBoost_INCLUDE_DIR=${{steps.install-boost.outputs.BOOST_ROOT}} && \
+          cmake --build . && \
+          ./test/mapreduce_test
+        env:
+          BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
+      - name: build for release
+        run: |
+          cmake . -DPATCH_VERSION=${{ github.run_number }} -DWITH_TESTS=FALSE \
+                  -DBoost_INCLUDE_DIR=${{steps.install-boost.outputs.BOOST_ROOT}} && \
+          cmake --build . --target package
+      - name: create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./mapreduce-0.0.${{ github.run_number }}-Linux.deb
+          asset_name: mapreduce-0.0.${{ github.run_number }}-Linux.deb
+          asset_content_type: application/vnd.debian.binary-package
